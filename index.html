@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Câmera CMB</title>
+<meta name="theme-color" content="#0a0a1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Câmera CMB">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<style>
+  :root {
+    --bg: #0a0a1a;
+    --violet: #a855f7;
+    --line: rgba(255,255,255,.12);
+    --glass: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.03));
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: #fff;
+    font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-user-select: none; user-select: none;
+    -webkit-text-size-adjust: 100%;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse at top, rgba(120,40,200,.25), transparent 60%),
+      radial-gradient(ellipse at bottom right, rgba(255,80,120,.13), transparent 50%),
+      radial-gradient(ellipse at bottom left, rgba(40,120,255,.13), transparent 50%);
+  }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; }
+  button:disabled { opacity: .3; cursor: default; }
+
+  #app {
+    position: relative;
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column; gap: 10px;
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+  }
+
+  /* ---------- palco 16:9 ---------- */
+  #stageWrap { flex: 0 0 auto; display: grid; place-items: center; min-width: 0; min-height: 0; }
+  #stage {
+    position: relative; width: 100%; max-width: 1100px; aspect-ratio: 16 / 9;
+    background: #000; border-radius: 16px; overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(168,85,247,.3), 0 0 36px rgba(168,85,247,.3);
+  }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #video { position: absolute; left: 0; top: 0; width: 2px; height: 2px; opacity: .01; pointer-events: none; }
+  .badge {
+    position: absolute; left: 10px; top: 10px; pointer-events: none;
+    font-size: 10px; letter-spacing: .16em; padding: 5px 10px; border-radius: 99px;
+    background: rgba(0,0,0,.55); border: 1px solid var(--line);
+  }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  #flash.go { animation: flash .22s ease-out; }
+  @keyframes flash { 0% { opacity: 0 } 15% { opacity: .85 } 100% { opacity: 0 } }
+
+  .cover {
+    position: absolute; inset: 0; display: none; place-items: center; text-align: center; padding: 14px;
+    background: linear-gradient(135deg, #0a0a1a, #15102a 50%, #0a0a1a);
+  }
+  .cover.on { display: grid; }
+  .cover .col { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 420px; }
+  .orb {
+    width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 32px;
+    background: linear-gradient(135deg, #8b5cf6, #d946ef); box-shadow: 0 0 34px rgba(168,85,247,.6);
+    animation: pulse 2.5s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { transform: scale(1.06) } }
+  .big {
+    min-height: 56px; padding: 0 28px; border-radius: 99px; background: #fff; color: #000;
+    font-weight: 800; font-size: 16px; letter-spacing: .03em;
+    box-shadow: 0 10px 30px rgba(255,255,255,.22);
+  }
+  .big:active { transform: scale(.97); }
+  .small { font-size: 12px; line-height: 1.45; opacity: .7; margin: 0; }
+  .spin {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.2); border-top-color: #fff; animation: spin .9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg) } }
+
+  /* ---------- painel ---------- */
+  #panel {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--glass); border: 1px solid rgba(168,85,247,.28); border-radius: 18px; padding: 12px;
+    scrollbar-width: none;
+  }
+  #panel::-webkit-scrollbar { display: none; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  h1 { margin: 0; font-size: 13px; letter-spacing: .14em; font-weight: 800; white-space: nowrap; }
+  .chip {
+    height: 30px; padding: 0 12px; border-radius: 99px; font-size: 12px; white-space: nowrap;
+    background: rgba(255,255,255,.08); border: 1px solid var(--line);
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pal {
+    position: relative; height: 52px; border-radius: 13px; overflow: hidden; text-align: left;
+    border: 2px solid transparent; outline: 1px solid var(--line); outline-offset: -1px;
+  }
+  .pal::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.75), transparent 75%); }
+  .pal span { position: absolute; left: 8px; bottom: 5px; z-index: 1; font-size: 11px; font-weight: 800; text-shadow: 0 1px 3px #000; }
+  .pal[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 16px rgba(255,255,255,.3); }
+  .pal:active { filter: brightness(1.25); }
+  label.lbl { font-size: 11px; letter-spacing: .14em; opacity: .7; }
+  #intVal { font-size: 11px; opacity: .7; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 34px; margin: 0; background: transparent;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 8px; border-radius: 99px; background: var(--track, rgba(255,255,255,.2)); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 26px; height: 26px; margin-top: -9px; border-radius: 50%;
+    background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  }
+  input[type=range]::-moz-range-track { height: 8px; border-radius: 99px; background: var(--track, rgba(255,255,255,.2)); }
+  input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border: 0; border-radius: 50%; background: #fff; }
+  .tog {
+    height: 40px; border-radius: 99px; font-size: 12px; white-space: nowrap;
+    background: rgba(255,255,255,.06); border: 1px solid var(--line); opacity: .75;
+  }
+  .tog[aria-pressed="true"] { background: #fff; color: #000; font-weight: 700; opacity: 1; }
+  .act { height: 46px; border-radius: 99px; font-size: 13px; white-space: nowrap; background: rgba(255,255,255,.08); border: 1px solid var(--line); }
+  .act.primary { background: #fff; color: #000; font-weight: 800; border-color: #fff; }
+  .act:not(:disabled):active { transform: scale(.97); }
+  #offline { font-size: 10px; letter-spacing: .08em; opacity: .55; text-align: center; margin: 0; }
+  #offline.ok { color: #6ee7b7; opacity: .9; }
+  #rotate { font-size: 11px; text-align: center; color: #fde68a; opacity: .8; margin: 0; }
+
+  /* ---------- deitado: vídeo ocupa a altura toda, painel ao lado ---------- */
+  @media (orientation: landscape) {
+    #app { flex-direction: row; }
+    #stageWrap { flex: 1 1 0; container-type: size; }
+    #stage { width: min(100cqw, 100cqh * 16 / 9); max-width: none; }
+    #panel { flex: 0 0 clamp(190px, 24vw, 300px); gap: 8px; padding: 10px; }
+    h1 { font-size: 12px; letter-spacing: .1em; }
+    .chip { padding: 0 10px; }
+    label.lbl { letter-spacing: .06em; }
+    #intVal { white-space: nowrap; font-size: 10px; }
+    .pal { height: 42px; }
+    #rotate { display: none; }
+  }
+
+  /* ---------- camadas de tela cheia ---------- */
+  .sheet {
+    position: fixed; inset: 0; z-index: 10; display: none; place-items: center;
+    background: rgba(0,0,0,.8); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    padding:
+      max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+      max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  }
+  .sheet.on { display: grid; }
+  .card {
+    width: 100%; max-width: 560px; max-height: 100%; overflow-y: auto;
+    background: #14102a; border: 1px solid rgba(168,85,247,.35); border-radius: 22px; padding: 20px;
+    display: flex; flex-direction: column; gap: 14px; font-size: 13px; line-height: 1.6;
+    -webkit-user-select: text; user-select: text;
+  }
+  .card h2 { margin: 0; font-size: 19px; line-height: 1.2; }
+  .card p, .card ul { margin: 0; opacity: .88; }
+  .card ul { padding-left: 18px; font-size: 12px; }
+  .card .sub { font-size: 10px; letter-spacing: .14em; opacity: .6; }
+  .card .box { background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+  .card code { background: rgba(255,255,255,.1); padding: 1px 6px; border-radius: 5px; font-size: 11px; }
+  #shotBox { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-height: 100%; }
+  #shotImg {
+    max-width: 100%; max-height: calc(100dvh - 150px); border-radius: 14px; aspect-ratio: 16/9;
+    box-shadow: 0 0 0 1px rgba(168,85,247,.4), 0 0 40px rgba(168,85,247,.35);
+    -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto;
+  }
+  #shotBox .row { gap: 10px; }
+  #shotBox .act { padding: 0 22px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stageWrap">
+    <div id="stage">
+      <canvas id="view" width="1280" height="720"></canvas>
+      <video id="video" playsinline webkit-playsinline muted autoplay></video>
+      <div class="badge" id="badge" hidden></div>
+
+      <div class="cover on" id="cIdle">
+        <div class="col">
+          <div class="orb">🔭</div>
+          <button class="big" id="startBtn">LIGAR A CÂMERA 🔭</button>
+          <p class="small">O celular vai pedir permissão para usar a câmera. Toque em Permitir.</p>
+        </div>
+      </div>
+      <div class="cover" id="cWait">
+        <div class="col"><div class="spin"></div><p class="small">Pedindo permissão da câmera…</p></div>
+      </div>
+      <div class="cover" id="cErr">
+        <div class="col">
+          <div style="font-size:30px">😿</div>
+          <b>Não consegui abrir a câmera</b>
+          <p class="small" id="errMsg"></p>
+          <button class="big" id="retryBtn">Tentar de novo 🔄</button>
+        </div>
+      </div>
+      <div id="flash"></div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div class="row">
+      <h1>CÂMERA CMB</h1>
+      <button class="chip" id="infoBtn">o que é?</button>
+    </div>
+
+    <div class="grid2" id="pals"></div>
+
+    <div>
+      <div class="row"><label class="lbl" for="int">INTENSIDADE</label><span id="intVal"></span></div>
+      <input type="range" id="int" min="0" max="100" step="1">
+    </div>
+
+    <div class="grid2">
+      <button class="tog" id="noiseBtn">✨ Ruído</button>
+      <button class="tog" id="starsBtn">⭐ Estrelas</button>
+    </div>
+
+    <div class="grid2">
+      <button class="act" id="flipBtn" disabled>🔄 Trocar</button>
+      <button class="act primary" id="shotBtn" disabled>📸 Foto</button>
+    </div>
+
+    <p id="rotate">🔄 Gire o celular para ver a imagem maior</p>
+    <p id="offline"></p>
+  </div>
+</div>
+
+<!-- foto tirada -->
+<div class="sheet" id="shotSheet">
+  <div id="shotBox">
+    <img id="shotImg" alt="Foto com filtro CMB">
+    <div class="row">
+      <button class="act" id="shotClose">Voltar</button>
+      <button class="act primary" id="shotSave">💾 Salvar foto</button>
+    </div>
+    <p class="small">No menu que abrir, escolha “Salvar Imagem”. Também dá para segurar o dedo na foto.</p>
+  </div>
+</div>
+
+<!-- o que é? -->
+<div class="sheet" id="infoSheet">
+  <div class="card">
+    <div>
+      <h2>🌌 O que é a Radiação Cósmica de Fundo?</h2>
+      <div class="sub">CLASS • COSMOLOGY LARGE ANGULAR SCALE SURVEYOR</div>
+    </div>
+    <p><b>CMB (Cosmic Microwave Background)</b> é a luz mais antiga do Universo! Surgiu 380 mil anos depois do Big Bang, quando o universo esfriou o suficiente para a luz viajar livremente. Hoje a vemos como um brilho fraquinho em micro-ondas vindo de todas as direções.</p>
+    <p class="box">🏜️ O <b>CLASS</b> é um telescópio no deserto do Atacama, no Chile, a 5.200 m de altitude. Ele mede essa radiação com detectores super sensíveis. As cores que você vê no app são iguais às que cientistas usam: <b>azul = mais frio, vermelho = mais quente</b>. Diferenças minúsculas contam a história do universo!</p>
+    <p><b>Como funciona o filtro:</b> pegamos o brilho (luminância) de cada pixel da sua câmera: <code>0.299R+0.587G+0.114B</code>. Esse brilho vira uma posição na paleta de cores escolhida. A intensidade mistura a imagem original com a cósmica.</p>
+    <ul>
+      <li><b>Planck:</b> paleta clássica da missão Planck: azul profundo, branco, vermelho quente</li>
+      <li><b>Frio &amp; Quente:</b> didática para crianças: frio vs quente</li>
+      <li><b>Arco-íris Cósmico:</b> arco-íris inteiro para ver detalhes</li>
+      <li><b>ALMA:</b> tons do Atacama, como o céu visto do deserto</li>
+    </ul>
+    <button class="act primary" id="infoClose">Entendi! 🔭</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- paletas ----------
+  const PALETTES = [
+    { id: "planck", name: "Planck",
+      css: "linear-gradient(90deg,#02025a,#0040ff,#ffffff,#ff4d00,#7a0000)",
+      stops: [[0,2,2,90],[.2,0,20,200],[.45,90,160,255],[.55,255,255,255],[.75,255,77,0],[1,122,0,0]] },
+    { id: "frio", name: "Frio & Quente",
+      css: "linear-gradient(90deg,#000033,#1a4dff,#ffffff,#ff6a33,#b80000)",
+      stops: [[0,0,0,51],[.25,10,40,160],[.5,100,150,255],[.7,255,200,200],[1,184,0,0]] },
+    { id: "arcoiris", name: "Arco-íris Cósmico",
+      css: "linear-gradient(90deg,#4b0082,#0066ff,#00e5ff,#22ff66,#ffeb00,#ff2d00)",
+      stops: [[0,75,0,130],[.2,0,80,255],[.4,0,230,255],[.6,50,255,120],[.8,255,235,0],[1,255,45,0]] },
+    { id: "alma", name: "ALMA",
+      css: "linear-gradient(90deg,#1a0500,#7a1a00,#cc3300,#ff7700,#ffbb55,#ffeec2)",
+      stops: [[0,26,5,0],[.2,122,26,0],[.45,204,51,0],[.7,255,119,0],[.85,255,187,85],[1,255,238,194]] },
+  ];
+  // tabela pronta de 256 cores por paleta (em vez de calcular a cor pixel a pixel)
+  for (const p of PALETTES) {
+    const lut = new Uint8Array(256 * 3), s = p.stops;
+    for (let v = 0; v < 256; v++) {
+      const t = v / 255;
+      let k = 0;
+      while (k < s.length - 2 && t > s[k + 1][0]) k++;
+      const a = s[k], b = s[k + 1], f = Math.min(1, Math.max(0, (t - a[0]) / (b[0] - a[0] || 1)));
+      for (let c = 0; c < 3; c++) lut[v * 3 + c] = Math.round(a[c + 1] + (b[c + 1] - a[c + 1]) * f);
+    }
+    p.lut = lut;
+  }
+
+  // ---------- estado ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("cmb." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("cmb." + k, JSON.stringify(v)); } catch {} },
+  };
+  const S = {
+    status: "idle",
+    facing: "environment",
+    mirror: false,
+    palette: PALETTES.find((p) => p.id === store.get("palette", "planck")) || PALETTES[0],
+    intensity: store.get("intensity", 85),
+    noise: store.get("noise", true),
+    stars: store.get("stars", true),
+  };
+
+  const video = $("video"), view = $("view");
+  const W = 1280, H = 720;           // saída 16:9
+  const PW = 960, PH = 540;          // resolução do processamento ao vivo
+  const vctx = view.getContext("2d", { alpha: false });
+  const proc = document.createElement("canvas");
+  proc.width = PW; proc.height = PH;
+  const pctx = proc.getContext("2d", { willReadFrequently: true, alpha: false });
+
+  // ruído pré-sorteado (bem mais leve que sortear por pixel)
+  const NOISE = new Int8Array(65536);
+  for (let i = 0; i < NOISE.length; i++) NOISE[i] = Math.round((Math.random() - 0.5) * 22);
+
+  // estrelinhas
+  const STARS = Array.from({ length: 80 }, () => ({
+    x: Math.random(), y: Math.random(), r: Math.random() * 1.8 + 0.4,
+    tw: Math.random() * 2 + 0.5, ph: Math.random() * Math.PI * 2,
+  }));
+  const glow = document.createElement("canvas");
+  glow.width = glow.height = 32;
+  {
+    const g = glow.getContext("2d"), gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    gr.addColorStop(0, "rgba(255,255,255,1)");
+    gr.addColorStop(0.25, "rgba(255,255,255,.9)");
+    gr.addColorStop(0.5, "rgba(167,139,250,.35)");
+    gr.addColorStop(1, "rgba(167,139,250,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+  }
+
+  // ---------- filtro ----------
+  // recorta o centro do vídeo em 16:9 (sem esticar), espelha a frontal e aplica a paleta
+  function filterInto(ctx, w, h) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return false;
+    let sw = vw, sh = vw * 9 / 16;
+    if (sh > vh) { sh = vh; sw = vh * 16 / 9; }
+    const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+    if (S.mirror) { ctx.setTransform(-1, 0, 0, 1, w, 0); }
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    const k = Math.round(S.intensity * 256 / 100);
+    if (k === 0 && !S.noise) return true;
+    const img = ctx.getImageData(0, 0, w, h), d = img.data, L = S.palette.lut;
+    const noise = S.noise;
+    let n = (Math.random() * 65536) | 0;
+    for (let i = 0, len = d.length; i < len; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const j = ((77 * r + 150 * g + 29 * b) >> 8) * 3;   // luminância Rec.601
+      const e = noise ? NOISE[n = (n + 1) & 65535] : 0;
+      d[i]     = r + (((L[j]     - r) * k) >> 8) + e;
+      d[i + 1] = g + (((L[j + 1] - g) * k) >> 8) + e;
+      d[i + 2] = b + (((L[j + 2] - b) * k) >> 8) + e;
+    }
+    ctx.putImageData(img, 0, 0);
+    return true;
+  }
+
+  let vignette = null;
+  function decorate(ctx, now) {
+    if (S.stars) {
+      for (const s of STARS) {
+        const tw = 0.5 + 0.5 * Math.sin(now * 0.001 * s.tw + s.ph);
+        if (tw < 0.15) continue;
+        const x = s.x * W, y = s.y * H, size = s.r * (5 + tw * 5);
+        ctx.globalAlpha = tw * 0.9;
+        ctx.drawImage(glow, x - size / 2, y - size / 2, size, size);
+        if (s.r > 1.2 && tw > 0.8) {
+          ctx.globalAlpha = tw * 0.35;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(x - 6, y - 0.5, 12, 1);
+          ctx.fillRect(x - 0.5, y - 6, 1, 12);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (!vignette) {
+      vignette = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.9);
+      vignette.addColorStop(0, "rgba(0,0,0,0)");
+      vignette.addColorStop(1, "rgba(10,0,40,.35)");
+    }
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  let raf = 0;
+  function loop(now) {
+    raf = requestAnimationFrame(loop);
+    if (video.readyState < 2) return;
+    if (!filterInto(pctx, PW, PH)) return;
+    vctx.imageSmoothingEnabled = true;
+    vctx.drawImage(proc, 0, 0, W, H);
+    decorate(vctx, now);
+  }
+
+  // ---------- câmera ----------
+  let stream = null;
+  function stopCamera() {
+    cancelAnimationFrame(raf);
+    if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+    video.srcObject = null;
+  }
+
+  function explain(err) {
+    const n = err && err.name;
+    if (n === "NotAllowedError" || n === "SecurityError")
+      return "A permissão da câmera foi negada. Feche o app, abra de novo e toque em Permitir. Se o pedido não aparecer: Ajustes → Apps → Safari → Câmera → Perguntar.";
+    if (n === "NotFoundError" || n === "OverconstrainedError") return "Não encontrei nenhuma câmera neste aparelho.";
+    if (n === "NotReadableError" || n === "AbortError") return "A câmera está sendo usada por outro app. Feche o outro app e tente de novo.";
+    return (n || "Erro") + ": " + ((err && err.message) || "não foi possível acessar a câmera");
+  }
+
+  async function startCamera(facing) {
+    setStatus("requesting");
+    stopCamera();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $("errMsg").textContent = window.isSecureContext
+        ? "Este navegador não libera a câmera aqui. Abra o link direto no Safari."
+        : "A câmera só funciona em endereço https. Abra o link https do app no Safari.";
+      return setStatus("error");
+    }
+    try {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      } catch (e) {
+        if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) throw e;
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+      }
+      const track = stream.getVideoTracks()[0];
+      const real = (track.getSettings && track.getSettings().facingMode) || facing;
+      S.facing = real === "user" ? "user" : "environment";
+      S.mirror = S.facing === "user";
+      track.addEventListener("ended", () => { if (stream && stream.getVideoTracks()[0] === track) { stopCamera(); setStatus("idle"); } });
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      setStatus("active");
+      raf = requestAnimationFrame(loop);
+      keepAwake();
+    } catch (err) {
+      console.warn(err);
+      stopCamera();
+      $("errMsg").textContent = explain(err);
+      setStatus("error");
+    }
+  }
+
+  // ao voltar para o app, o iPhone às vezes congela a câmera: religa sozinho
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || S.status !== "active") return;
+    const t = stream && stream.getVideoTracks()[0];
+    if (!t || t.readyState !== "live" || t.muted || video.paused) {
+      video.play().catch(() => {});
+      setTimeout(() => {
+        const t2 = stream && stream.getVideoTracks()[0];
+        if (S.status === "active" && (!t2 || t2.readyState !== "live" || t2.muted || video.paused)) startCamera(S.facing);
+      }, 600);
+    }
+    keepAwake();
+  });
+
+  // mantém a tela acesa enquanto a câmera está ligada
+  let wake = null;
+  async function keepAwake() {
+    try {
+      if (S.status === "active" && "wakeLock" in navigator && (!wake || wake.released)) wake = await navigator.wakeLock.request("screen");
+    } catch {}
+  }
+
+  // ---------- foto ----------
+  let shotFile = null, shotUrl = "";
+  function takePhoto() {
+    if (S.status !== "active") return;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const ctx = c.getContext("2d", { alpha: false });
+    if (!filterInto(ctx, W, H)) return;          // foto processada em resolução cheia
+    decorate(ctx, performance.now());
+    const f = $("flash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
+    c.toBlob((blob) => {
+      if (!blob) return;
+      const name = "cmb-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".jpg";
+      try { shotFile = new File([blob], name, { type: "image/jpeg" }); } catch { shotFile = null; }
+      if (shotUrl) URL.revokeObjectURL(shotUrl);
+      shotUrl = URL.createObjectURL(blob);
+      $("shotImg").src = shotUrl;
+      $("shotSave").dataset.name = name;
+      $("shotSheet").classList.add("on");
+    }, "image/jpeg", 0.92);
+  }
+  async function savePhoto() {
+    if (shotFile && navigator.canShare && navigator.canShare({ files: [shotFile] })) {
+      try { await navigator.share({ files: [shotFile] }); } catch {}
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = shotUrl; a.download = $("shotSave").dataset.name || "cmb.jpg";
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // ---------- interface ----------
+  function setStatus(s) {
+    S.status = s;
+    $("cIdle").classList.toggle("on", s === "idle");
+    $("cWait").classList.toggle("on", s === "requesting");
+    $("cErr").classList.toggle("on", s === "error");
+    const on = s === "active";
+    $("flipBtn").disabled = !on;
+    $("shotBtn").disabled = !on;
+    $("badge").hidden = !on;
+    if (!on && wake) { try { wake.release(); } catch {} wake = null; }
+    paint();
+  }
+  function paint() {
+    for (const b of $("pals").children) b.setAttribute("aria-pressed", String(b.dataset.id === S.palette.id));
+    $("int").value = S.intensity;
+    $("int").style.setProperty("--track", S.palette.css);
+    $("intVal").textContent = S.intensity + "% • " + (S.intensity < 30 ? "Sutil" : S.intensity < 70 ? "Médio" : "Cósmico!");
+    $("noiseBtn").setAttribute("aria-pressed", String(S.noise));
+    $("starsBtn").setAttribute("aria-pressed", String(S.stars));
+    $("badge").textContent = "CMB AO VIVO • " + S.palette.name.toUpperCase();
+  }
+
+  for (const p of PALETTES) {
+    const b = document.createElement("button");
+    b.className = "pal"; b.dataset.id = p.id; b.style.background = p.css;
+    const s = document.createElement("span"); s.textContent = p.name; b.appendChild(s);
+    b.addEventListener("click", () => { S.palette = p; store.set("palette", p.id); paint(); });
+    $("pals").appendChild(b);
+  }
+  $("int").addEventListener("input", (e) => { S.intensity = +e.target.value; store.set("intensity", S.intensity); paint(); });
+  $("noiseBtn").addEventListener("click", () => { S.noise = !S.noise; store.set("noise", S.noise); paint(); });
+  $("starsBtn").addEventListener("click", () => { S.stars = !S.stars; store.set("stars", S.stars); paint(); });
+  $("startBtn").addEventListener("click", () => startCamera(S.facing));
+  $("retryBtn").addEventListener("click", () => startCamera(S.facing));
+  $("flipBtn").addEventListener("click", () => startCamera(S.facing === "user" ? "environment" : "user"));
+  $("shotBtn").addEventListener("click", takePhoto);
+  $("shotSave").addEventListener("click", savePhoto);
+  $("shotClose").addEventListener("click", () => $("shotSheet").classList.remove("on"));
+  $("infoBtn").addEventListener("click", () => $("infoSheet").classList.add("on"));
+  $("infoClose").addEventListener("click", () => $("infoSheet").classList.remove("on"));
+  $("infoSheet").addEventListener("click", (e) => { if (e.target === $("infoSheet")) $("infoSheet").classList.remove("on"); });
+  setStatus("idle");
+
+  // ---------- modo offline ----------
+  const off = $("offline");
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    off.textContent = "preparando modo offline…";
+    navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(async () => {
+      const ok = "caches" in window && await caches.match("index.html", { ignoreSearch: true });
+      off.textContent = ok ? "● pronto para usar sem internet" : "modo offline ainda não está pronto";
+      off.classList.toggle("ok", !!ok);
+    }).catch(() => { off.textContent = "modo offline indisponível neste navegador"; });
+  } else {
+    off.textContent = "modo offline só funciona pelo link https";
+  }
+})();
+</script>
+</body>
+</html>
